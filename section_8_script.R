@@ -8,6 +8,7 @@ pacman::p_load(MASS)
 pacman::p_load(marginaleffects)
 pacman::p_load(pscl)
 pacman::p_load(nnet)
+pacman::p_load(sampleSelection)
 
 # データの読み込み・前処理
 data8 <- read_csv("piaac.csv")
@@ -282,6 +283,108 @@ modelsummary(models84,
              add_rows = rows,
              stars = c("*" = 0.05, "**" = 0.01, "***" = 0.001),
              output = "kableExtra")
+
+
+
+
+# 8-5 ---------------------------------------------------------------------
+
+data8_felame <- data8 |> 
+  filter(gender == "Female") |>
+  drop_na(educ, age, couple, child) |> 
+  mutate(lwage = log(wage),
+         exp = age - educ - 6,
+         exp2 = exp^2 / 100,
+         selected = !is.na(wage))
+
+
+model85_OLS <- lm(lwage ~ educ + exp + exp2,
+                  data = data8_felame)
+
+model85_OLS <- modelsummary(model85_OLS, output = "modelsummary_list")
+
+model85_OLS$tidy$component <- "賃金式"
+
+
+model85_2step <- sampleSelection::heckit(
+  selected ~ educ + exp + exp2 + couple + child,
+  lwage ~ educ + exp + exp2,
+  data = data8_felame,
+  method = "2step"
+)
+
+model85_2step <- modelsummary(model85_2step, output = "modelsummary_list")
+
+model85_2step$tidy <- model85_2step$tidy |> 
+  mutate(
+    component = ifelse(
+      component == "selection", "セレクション式", "賃金式"))
+
+
+model85_ml <- sampleSelection::heckit(
+  selected ~ educ + exp + exp2 + couple + child,
+  lwage ~ educ + exp + exp2,
+  data = data8_felame,
+  method = "ml"
+)
+
+model85_ml <- modelsummary(model85_ml, output = "modelsummary_list")
+
+model85_ml$tidy <- model85_ml$tidy |> 
+  mutate(
+    component = ifelse(
+      component == "selection", "セレクション式", "賃金式"))
+
+
+models_85 <- list(
+  "OLS" = model85_OLS,
+  "2段階へキット" = model85_2step,
+  "最尤法へキット" = model85_ml
+)
+
+cm <- c(
+  "educ" = "教育年数",
+  "exp" = "経験年数",
+  "exp2" = "経験年数2乗/100",
+  "couple" = "配偶者あり",
+  "child" = "子供数",
+  "(Intercept)" = "定数項",
+  "invMillsRatio" = "逆ミルズ比",
+  "rho" = "誤差項の相関"
+)
+
+gm <- tribble(
+  ~raw, ~clean, ~fmt,
+  "adj.r.squared", "$\\bar{R}^2$/疑似$R^2$", 2,
+  "nobs", "$N$", 0
+)
+
+modelsummary(
+  models_85,
+  coef_map = cm,
+  gof_map = gm,
+  stars = c("*" = 0.1, "**" = 0.05, "***" = 0.01),
+  shape = term ~ component,
+  output = "kableExtra") |>
+  row_spec(c(12, 18), extra_css = "border-bottom: 1.5px solid")
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
