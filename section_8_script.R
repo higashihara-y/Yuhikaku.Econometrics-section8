@@ -7,6 +7,7 @@ pacman::p_load(margins)
 pacman::p_load(MASS)
 pacman::p_load(marginaleffects)
 pacman::p_load(pscl)
+pacman::p_load(nnet)
 
 # データの読み込み・前処理
 data8 <- read_csv("piaac.csv")
@@ -173,6 +174,92 @@ modelsummary(model82,
              gof_map = gm,
              stars = c("*" = 0.05, "**" = 0.01, "***" = 0.001),
              output = "kableExtra")
+
+
+
+# -----------------------------------------
+# 8-3
+
+data8_felame <- data8_felame |> 
+  mutate(empstat_edt = factor(empstat_edt,
+                              labels = c("フル", "パート", "不就業")) |> 
+           relevel(ref = 3))
+
+model83 <- nnet::multinom(empstat_edt ~ educ + age + couple + child,
+                          data = data8_felame, trace = FALSE)
+
+model83_marginal <- 
+  marginaleffects::avg_slopes(model83,
+                              df = insight::get_df(model83))
+
+glance_custom.multinom <- function(x) {
+  capture.output(McFadden <- pscl::pR2(x)["McFadden"])
+  out <- tibble("pseudo.r.squared" = McFadden)
+  return(out)
+}
+
+model83 <- modelsummary(model83, output = "modelsummary_list")
+
+model83$tidy <- model83$tidy |> 
+  mutate(
+    group = response
+    )
+
+model83 <- list("モデル係数" = model83,
+                "限界効果" = model83_marginal)
+
+cm <- c("educ" = "教育年数",
+        "age" = "年齢",
+        "couple" = "配偶者有り",
+        "child" = "子供数",
+        "(Intercept)" = "定数項")
+
+gm <- tribble(
+  ~raw, ~clean, ~fmt,
+  "pseudo.r.squared", "疑似$R^2$", 3,
+  "nobs", "$N$", 0)
+
+modelsummary(model83,
+             shape = term ~ group,
+             coef_map = cm,
+             gof_map = gm,
+             stars = c("*" = 0.05, "**" = 0.01, "***" = 0.001),
+             output = "kableExtra")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
