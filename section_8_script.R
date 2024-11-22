@@ -4,26 +4,27 @@ library(estimatr)
 library(modelsummary)
 library(kableExtra)
 pacman::p_load(margins)
+pacman::p_load(MASS)
+pacman::p_load(marginaleffects)
+pacman::p_load(pscl)
 
 # データの読み込み・前処理
-data81 <- read_csv("piaac.csv")
-data81_felame <- data81 |> 
+data8 <- read_csv("piaac.csv")
+data8_felame <- data8 |> 
   filter(gender == "Female") |> 
   mutate(emp = if_else(lfs == "Employed", 1, 0)) |> 
   relocate(emp, .before = "contract")
-
-glimpse(data81_felame)
 
 
 # 表8-1の再現
 # (1)
 model1 <- lm_robust(emp ~ educ + age + couple + child,
-                    data = data81_felame, se_type = "stata")
+                    data = data8_felame, se_type = "stata")
 summary(model1)
 
 # (2)
 model2 <- glm(emp ~ educ + age + couple + child,
-              data = data81_felame,
+              data = data8_felame,
               family = binomial(link = "probit"))
 summary(model2)
 
@@ -33,7 +34,7 @@ summary(model3)
 
 # (4)
 model4 <- glm(emp ~ educ + age + couple + child,
-              data = data81_felame,
+              data = data8_felame,
               family = binomial(link = "logit"))
 summary(model4)
 
@@ -96,20 +97,82 @@ modelsummary(models_81,
 
 
 
+# ------------------------------------------------
+# 8-2
+data8_male <- data8 |> 
+  filter(gender == "Male") |> 
+  mutate(jsrev = factor(js,
+                        levels = c("Extremely dissatisfied",
+                                   "Dissatisfied",
+                                   "Neither satisfied nor dissatisfied",
+                                   "Satisfied",
+                                   "Extremely satisfied"),
+                        ordered = TRUE)) |> 
+  relocate(jsrev, .after = "js")
+
+model82 <- MASS::polr(jsrev ~ educ + age + couple + child,
+                      data = data8_male, method = "probit")
+summary(model82)
+
+model82_marginal <- 
+  marginaleffects::avg_slopes(model82,
+                              df = insight::get_df(model82))
+
+model82_marginal <- 
+  modelsummary(model82_marginal,
+               shape = term ~ group,
+               output = "modelsummary_list",
+               fmt = 5)
+
+model82_marginal$tidy <- model82_marginal$tidy |> 
+  mutate(estimate = estimate * 100,
+         std.error = std.error * 100,
+         conf.low = conf.low * 100,
+         conf.high - conf.high * 100) |> 
+  mutate(group = factor(group,
+                        levels = c("Extremely dissatisfied",
+                                   "Dissatisfied",
+                                   "Neither satisfied nor dissatisfied",
+                                   "Satisfied",
+                                   "Extremely satisfied"),
+                        labels = c("とても不満",
+                                   "不満",
+                                   "どちらでもない",
+                                   "満足",
+                                   "とても満足"),
+                        ordered = TRUE))
 
 
+model82_marginal$glance <- NULL
 
+model82 <- list("モデル係数" = model82,
+                "限界効果（％ポイント変化）" = model82_marginal )
 
+cm <- c("educ" = "教育年数",
+        "age" = "年齢",
+        "couple" = "配偶者有り",
+        "child" = "子供数",
+        "Extremely dissatisfied|Dissatisfied" = "$\\mu_1$",
+        "Dissatisfied|Neither satisfied nor dissatisfied" = "$\\mu_2$",
+        "Neither satisfied nor dissatisfied|Satisfied" = "$\\mu_3$",
+        "Satisfied|Extremely satisfied" = "$\\mu_4$")
 
+glance_custom.polr <- function(x) {
+  capture.output(McFadden <- pscl::pR2(x)["McFadden"])
+  out <- tibble("pseudo.r.squared" = McFadden)
+  return(out)
+}
 
+gm <- tribble(~raw, ~clean, ~fmt,
+              "pseudo.r.squared", "疑似$R^2$", 3,
+              "nobs", "$N$", 0)
 
-
-
-
-
-
-
-
+modelsummary(model82,
+             shape = term ~ group,
+             coef_map = cm,
+             gof_map = gm,
+             stars = c("*" = 0.05, "**" = 0.01, "***" = 0.001),
+             output = "kableExtra")
 
 
 
