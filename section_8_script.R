@@ -17,7 +17,9 @@ data8_felame <- data8 |>
   relocate(emp, .before = "contract")
 
 
-# 表8-1の再現
+
+# 表8-1の再現 -----------------------------------------------------------------
+
 # (1)
 model1 <- lm_robust(emp ~ educ + age + couple + child,
                     data = data8_felame, se_type = "stata")
@@ -98,8 +100,9 @@ modelsummary(models_81,
 
 
 
-# ------------------------------------------------
-# 8-2
+
+# 8-2 ---------------------------------------------------------------------
+
 data8_male <- data8 |> 
   filter(gender == "Male") |> 
   mutate(jsrev = factor(js,
@@ -177,8 +180,8 @@ modelsummary(model82,
 
 
 
-# -----------------------------------------
-# 8-3
+
+# 8-3 ---------------------------------------------------------------------
 
 data8_felame <- data8_felame |> 
   mutate(empstat_edt = factor(empstat_edt,
@@ -205,7 +208,7 @@ model83$tidy <- model83$tidy |>
     group = response
     )
 
-model83 <- list("モデル係数" = model83,
+models83 <- list("モデル係数" = model83,
                 "限界効果" = model83_marginal)
 
 cm <- c("educ" = "教育年数",
@@ -219,12 +222,67 @@ gm <- tribble(
   "pseudo.r.squared", "疑似$R^2$", 3,
   "nobs", "$N$", 0)
 
-modelsummary(model83,
+modelsummary(models83,
              shape = term ~ group,
              coef_map = cm,
              gof_map = gm,
              stars = c("*" = 0.05, "**" = 0.01, "***" = 0.001),
              output = "kableExtra")
+
+
+
+
+# 8-4 ---------------------------------------------------------------------
+
+model84_OLS <- lm(hours ~ educ + age + couple + child,
+                  data = data8_felame,
+                  y = TRUE)
+
+model84_tobit <- AER::tobit(hours ~ educ + age + couple + child,
+                            data = data8_felame,
+                            left = 0)
+
+models84 <- list("(1)" = model84_OLS,
+                 "(2)" = model84_tobit)
+
+rows <- tribble(
+  ~term, ~`(1)`, ~ `(2)`,
+  "推定方法", "OLS", "トービット"
+)
+
+attr(rows, "position") <- 1
+
+cm <- c("educ" = "教育年数",
+        "age" = "年齢",
+        "couple" = "配偶者有り",
+        "child" = "子供数",
+        "(Intercept)" = "定数項")
+
+glance_custom.tobit <- function(x) {
+  out <- tibble("r.squared" = 1 - x$loglik[2] / x$loglik[1],
+                "nobs_zero" = sum(as.character(x$y) == "  0-"))
+  return(out)
+}
+
+glance_custom.lm <- function(x) {
+  out <- tibble("nobs_zero" = sum(x$y == 0))
+  return(out)
+}
+
+gm <- tribble(
+  ~raw, ~clean, ~fmt,
+  "r.squared", "$R^2$/疑似$R^2$", 3,
+  "nobs", "$N$", 0,
+  "nobs_zero", "うち0時間", 0
+)
+
+modelsummary(models84,
+             coef_map = cm,
+             gof_map = gm,
+             add_rows = rows,
+             stars = c("*" = 0.05, "**" = 0.01, "***" = 0.001),
+             output = "kableExtra")
+
 
 
 
