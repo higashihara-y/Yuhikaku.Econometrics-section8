@@ -222,22 +222,131 @@ modelsummary::modelsummary(
 
 
 
+# 8-4 ---------------------------------------------------------------------
+
+#y = TRUEを追加して、yを算出する 
+model84_ols <- lm(hours ~ educ + age + couple + child,
+                  data = data8_fem, y = TRUE)
+
+model84_tobit <- AER::tobit(hours ~ educ + age + couple + child,
+                            data = data8_fem, left = 0)
+
+model84_comb <- list("(1)" = model84_ols,
+                     "(2)" = model84_tobit)
+
+glance_custom.lm <- function(x) {
+  out <- tibble("nobs_zero" = sum(x$y == 0))
+  return(out)
+}
+
+glance_custom.tobit <- function(x) {
+  out <- tibble("r.squared" = 1 - x$loglik[2] / x$loglik[1],
+                "nobs_zero" = sum(as.character(x$y) == " 0-"))
+  return(out)
+}
+
+cm <- c( "educ" = "教育年数",
+         "age" = "年齢",
+         "couple" = "配偶者あり",
+         "child" = "子供数",
+         "(Intercept)" = "定数項")
+
+gm <- tribble(
+  ~raw, ~clean, ~fmt,
+  "r.squared", "$R^2 / 疑似R^2$", 3,
+  "nobs", "$N$", 0,
+  "nobs_zero", "うち0時間", 0
+)
+
+rows <- tribble(
+  ~term, ~"(1)", ~"(2)",
+  "推定方法", "OLS", "トービット"
+)
+
+attr(rows, "position") <- 1
+
+modelsummary::msummary(
+  models = model84_comb,
+  coef_map = cm,
+  gof_map = gm,
+  add_rows = rows,
+  stars = c("*" = 0.1, "**" = 0.05, "***" = 0.01),
+  output = "kableExtra"
+)
 
 
 
+# 8-5 ---------------------------------------------------------------------
 
+data8_fem <- data8_fem |> 
+  drop_na(educ, age, couple, child) |> 
+  mutate(lwage = log(wage),
+         exp = age - educ - 6,
+         exp2 = exp^2 / 100,
+         selected = !is.na(wage))
 
+# OLS
+model85_ols <- lm(lwage ~ educ + exp + exp2, data = data8_fem)
+model85_ols <- modelsummary(model85_ols, output = "modelsummary_list")
+model85_ols$tidy$component <- "賃金式"
 
+# 2段階へキット
+model85_2step <- sampleSelection::heckit(
+  selected ~ educ + exp + exp2 + couple + child,
+  lwage ~ educ + exp + exp2,
+  data = data8_fem, method = "2step"
+)
+model85_2step <- modelsummary(model85_2step, output = "modelsummary_list")
+model85_2step$tidy <- model85_2step$tidy |> 
+  mutate(component = ifelse(
+    component == "selection", "セレクション式", "賃金式"
+    ))
 
+# 最尤法へキット
+model85_ml <- sampleSelection::heckit(
+  selected ~ educ + exp + exp2 + couple + child,
+  lwage ~ educ + exp + exp2,
+  data = data8_fem, method = "ml"
+)
+model85_ml <- modelsummary(model85_ml, output = "modelsummary_list")
+model85_ml$tidy <- model85_ml$tidy |> 
+  mutate(component = ifelse(
+    component == "selection", "セレクション式", "最尤法へキット"
+  ))
 
+model85_comb <- list(
+  "OLS" = model85_ols,
+  "2段階へキット" = model85_2step,
+  "最尤法へキット" = model85_ml
+)
 
+cm <- c(
+  "educ" = "教育年数",
+  "exp" = "経験年数",
+  "exp2" = "経験年数2乗/100",
+  "couple" = "配偶者あり",
+  "child" = "子供数",
+  "(Intercept)" = "定数項",
+  "invMillsRatio" = "逆ミルズ比",
+  "rho" = "誤差項の相関"
+)
 
+gm <- tribble(
+  ~raw, ~clean, ~fmt,
+  "r.squared", "$\\bar{R}^2/疑似R^2$", 2,
+  "nobs", "$N$", 0
+)
 
-
-
-
-
-
+modelsummary(
+  models = model85_comb,
+  shape = term ~ component,
+  coef_map = cm,
+  gof_map = gm,
+  stars = c("*" = 0.1, "**" = 0.05, "***" = 0.01),
+  output = "kableExtra"
+) |> 
+  kableExtra::row_spec(c(12, 18), 
+                       extra_css = "border-bottom: 1.5px solid")
 
 
 
